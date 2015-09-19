@@ -1,0 +1,79 @@
+[ { "BlackBox" :
+    { "name" : "DPBRam.dpRamFile#"
+    , "type" :
+"dpRamFile# :: KnownNat m                   -- ARG[0]
+               => SClock clk                -- clk,  ARG[1]
+               -> SNat n                    -- sz,   ARG[2]
+               -> FilePath                  -- file, ARG[3]
+               -> Signal' clk Bool          -- wrE A, ARG[4]
+               -> Signal' clk Int           -- Address A, ARG[5]
+               -> Signal' clk (BitVector m) -- din A, ARG[6]              
+               -> Signal' clk Bool          -- wrE B, ARG[7]
+               -> Signal' clk Int           -- Address B, ARG[8]
+               -> Signal' clk (BitVector m) -- din B, ARG[9]
+               -> Signal' clk (BitVector m, BitVector m) -- dout A, dout B"
+    , "templateD" :
+"-- dpRamFile begin
+dpRamFile~COMPNAME_~SYM[0] : block
+  type RamType is array(0 to ~LIT[2]-1) of bit_vector(~LIT[0]-1 downto 0);
+
+
+  impure function InitRamFromFile (RamFileName : in string) return RamType is
+    FILE RamFile : text open read_mode is RamFileName;
+    variable RamFileLine : line;
+    variable TRAM : RamType;
+  begin
+    for i in TRAM'range loop
+      readline(RamFile,RamFileLine);
+      read(RamFileLine,TRAM(i));
+    end loop;
+    return TRAM;
+  end function;
+
+  shared variable RAM  : RamType := InitRamFromFile(~FILE[~LIT[3]]);
+  signal doutA : ~TYP[6];
+  signal doutB : ~TYP[6];
+  signal addrA   : integer range 0 to ~LIT[2]-1;
+  signal addrB   : integer range 0 to ~LIT[2]-1;
+begin
+  addrA <= ~ARG[5]
+  -- pragma translate_off
+        mod ~LIT[2]
+  -- pragma translate_on
+        ;
+
+  addrB <= ~ARG[8]
+  -- pragma translate_off
+        mod ~LIT[2]
+  -- pragma translate_on
+        ;
+
+  dpRamFile_PortA_~SYM[1] : process(~CLK[1])
+  begin
+    if (rising_edge(~CLK[1])) then
+      if ~ARG[4] then
+        RAM(to_integer(addrA)) := to_bitvector(~ARG[6]);
+      else 
+        doutA <= to_stdlogicvector(RAM(addrA));
+      end if;
+    end if;
+  end process;
+
+  dpRamFile_PortB_~SYM[1] : process(~CLK[1])
+  begin
+    if (rising_edge(~CLK[1])) then
+      if ~ARG[7] then
+        RAM(to_integer(addrB)) := to_bitvector(~ARG[9]);
+      else 
+        doutB <= to_stdlogicvector(RAM(addrB));
+      end if;
+    end if;
+  end process;
+
+  ~RESULT <= (doutA, doutB);
+
+end block;
+-- dpRamFile end"
+    }
+  }
+]
