@@ -45,7 +45,8 @@ $(working)/$(topLevel).scr: Makefile
 	echo "-top $(topLevel)" >> $@
 	echo "-ifn $(topLevel).prj" >> $@
 	echo "-ofn $(topLevel).ngc" >> $@
-	echo "-BRAM_UTILIZATION_RATIO -1" >> $@
+
+#	echo "-BRAM_UTILIZATION_RATIO -1" >> $@
 
 # create the net list file
 $(working)/$(topLevel).ngc: vhdl/$(topLevel)/$(topLevel).vhdl $(working)/$(topLevel).scr $(working)/$(topLevel).prj

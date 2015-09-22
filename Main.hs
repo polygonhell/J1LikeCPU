@@ -42,19 +42,27 @@ $(decLiteralD 65536)
                    ]
 }) #-}  
 
-topEntity :: Signal (BitVector 32)
+
+topEntity :: Signal (BitVector 8)
 topEntity = o where 
-  (da, db) = unbundle $ ram32K addrA addrB wrB dataB :: (Signal (BitVector 32), Signal (BitVector 32))
-  o = resize <$> (xor <$> da <*> db) 
+  (da, db) = unbundle $ ram addrA addrB wrB dataB :: (Signal (BitVector 32), Signal (BitVector 32))
+  o = (resize . combineBits) <$> (xor <$> da <*> db) 
   addrA = register (0 :: BitVector 14) (addrA + 1) 
   addrB = register (100 :: BitVector 14) (addrB + 1) 
   dataB = register (100 :: BitVector 32) (dataB + 1)
   wrB = register False (not <$> wrB)
 
 
+combineBits :: BitVector 32 -> BitVector 8
+combineBits a = b1 `xor` b2 where
+  (w1, w2) = split a :: (BitVector 16, BitVector 16)
+  (b1a, b1b) = split w1 :: (BitVector 8, BitVector 8)
+  (b2a, b2b) = split w2 :: (BitVector 8, BitVector 8)
+  b1 = b1a `xor` b1b
+  b2 = b2a `xor` b2b
 
 
-ram32K addrA addrB weB dataB = dpRamFile d16384 "rob.bin" (signal False) addrA (signal 0) weB addrB dataB
+ram addrA addrB weB dataB = dpRamFile d16384 "rob.bin" (signal False) addrA (signal 0) weB addrB dataB
 
 -- ram32K :: Signal Addr -> Signal Bit -> Signal Byte -> Signal Byte
 -- -- ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
