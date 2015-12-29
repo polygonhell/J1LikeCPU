@@ -14,13 +14,14 @@ module DPBRam where
 
 import Control.Monad         (when)
 import Control.Monad.ST.Lazy (ST,runST)
+import Control.Monad.ST.Lazy.Unsafe (unsafeIOToST)
 import Data.Array.MArray     (newListArray,readArray,writeArray)
 import Data.Array.ST         (STArray)
 import Data.Char             (digitToInt)
 import Data.Maybe            (listToMaybe)
 import GHC.TypeLits          (KnownNat, type (^))
 import Numeric               (readInt)
-import System.IO.Unsafe      (unsafePerformIO)
+--import System.IO.Unsafe      (unsafePerformIO)
 
 import CLaSH.Promoted.Nat    (SNat,snat,snatToInteger)
 import CLaSH.Sized.BitVector (BitVector)
@@ -91,7 +92,8 @@ dpRamFile# clk sz file wreA addrA dinA wreB addrB dinB = register' clk undefined
   szI  = fromInteger $ snatToInteger sz
 
   dout = runST $ do
-      arr <- newListArray (0,szI-1) (initMem file)
+      mem <- unsafeIOToST (initMem file)
+      arr <- newListArray (0,szI-1) mem
       traverse (ramT arr) (bundle' clk (wreA, addrA, dinA, wreB, addrB, dinB))
 
   ramT :: STArray s Int e -> (Bool, Int, e, Bool, Int, e) -> ST s (e, e)
