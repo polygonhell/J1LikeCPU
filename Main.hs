@@ -33,17 +33,17 @@ $(decLiteralD 65536)
     { t_name = "main"
     , t_inputs = []
     , t_outputs = ["SS_SEGS"]
-    , t_extraIn = [ ("CLOCK_32", 1)
+    , t_extraIn = [ ("SYS_CLK", 1)
                   ]
     , t_extraOut = []
     , t_clocks   = [ (clockWizard "clkwiz50"
-                             "CLOCK_32(0)"
+                             "SYS_CLK(0)"
                              "'0'") 
                    ]
 }) #-}  
 
 
-topEntity :: Signal (BitVector 8)
+topEntity :: Signal (BitVector 4)
 topEntity = o where 
   (da, db) = unbundle $ ram addrA addrB wrB dataB :: (Signal (BitVector 32), Signal (BitVector 32))
   o = (resize . combineBits) <$> (xor <$> da <*> db) 

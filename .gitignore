@@ -1,0 +1,5 @@
+/.Xil/*
+/obj/*
+/out/*
+/working/*
+/vhdl/Main/*
