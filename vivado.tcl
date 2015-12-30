@@ -12,8 +12,9 @@ set_part xc7a35tcsg324-1
 #
 # STEP#1: setup design sources and constraints
 #
-read_vhdl  [ glob ../vhdl/$topLevel/*.vhdl ]
+
 read_vhdl ../vhdl/extra/arty/clkwiz50.vhd
+read_vhdl  [ glob ../vhdl/$topLevel/*.vhdl ]
 read_xdc ../vhdl/extra/arty.xdc
 
 

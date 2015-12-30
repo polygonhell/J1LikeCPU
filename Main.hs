@@ -45,12 +45,9 @@ $(decLiteralD 65536)
 
 topEntity :: Signal (BitVector 4)
 topEntity = o where 
-  (da, db) = unbundle $ ram addrA addrB wrB dataB :: (Signal (BitVector 32), Signal (BitVector 32))
-  o = (resize . combineBits) <$> (xor <$> da <*> db) 
-  addrA = register (0 :: BitVector 14) (addrA + 1) 
-  addrB = register (100 :: BitVector 14) (addrB + 1) 
-  dataB = register (100 :: BitVector 32) (dataB + 1)
-  wrB = register False (not <$> wrB)
+  res = system
+  o = (resize . dOut) <$> res
+
 
 
 combineBits :: BitVector 32 -> BitVector 8
@@ -69,7 +66,17 @@ ram addrA addrB weB dataB = dpRamFile d16384 "rob.bin" (signal False) addrA (sig
 -- ram32K aAddr wrEn dataA bAddr dataB = unpack <$> blockRamFilePow2 "rob.bin" (unpack <$> addr) (unpack <$> addr) wrEn (pack <$> dataIn)
 
 
+system :: Signal CpuOut
+system = out where
+  out = evalM $ (CpuIn <$> iin <*> din)
+  addr = iOutAddr <$> out :: Signal AddrSize
+  (din, _) = unbundle $ ram addr (dOutAddr <$> out) ((==) 1 <$> (dOutWE <$> out)) (dOut <$> out)
+  iin = resize <$> din :: Signal InstructionWidth  -- TODO this is incorrect
 
+
+runSystem x = putStr $ unlines $ L.map (show) $L.drop 1 (sampleN x system)
+
+main = runSystem 10
 
 
 
@@ -88,7 +95,7 @@ data CpuOut = CpuOut
 
     -- Instruction Fetch Address
     iOutAddr :: AddrSize
-  }
+  } deriving Show
 
 data CpuState = CpuState
   { pc :: AddrSize,
@@ -100,21 +107,20 @@ data CpuState = CpuState
   }
 
 initialState = CpuState 0 0 0 (Stack 0 (replicate d32 (0 :: WordSize))) (Stack 0 (replicate d32 (0 :: AddrSize)))
-
+evalM = eval `mealy` initialState
 
 eval :: CpuState -> CpuIn -> (CpuState, CpuOut) 
 eval CpuState{..} CpuIn{..} = (st', out) where
   st' = CpuState pc' dstT' stDepth' dst' rst'
-  out = CpuOut 0 0 0 0
+  out = CpuOut dOut (resize dstT) dstWe pc' 
 
-  pc' = pc + 1
+  pc' = pc + 1 -- TODO needs to accomodate jumps etc
 
   (dst', dstN) = stack dst (dstWe, dstDelta, dstT)
   (rst', rstR) = stack rst (0, 0, 0)
 
   dOut = dstN
-  dOutWE = 0
-  dstWe = 0
+  dstWe = if isALU && write then 1 else 0 :: Bit
   dstDelta = 0
   stDepth' = 0
 
