@@ -17,18 +17,18 @@ import Control.Monad.ST.Lazy (ST,runST)
 import Control.Monad.ST.Lazy.Unsafe (unsafeIOToST)
 import Data.Array.MArray     (newListArray,readArray,writeArray)
 import Data.Array.ST         (STArray)
-import Data.Char             (digitToInt)
-import Data.Maybe            (listToMaybe)
-import GHC.TypeLits          (KnownNat, type (^))
-import Numeric               (readInt)
+-- import Data.Char             (digitToInt)
+-- import Data.Maybe            (listToMaybe)
+import GHC.TypeLits          (KnownNat)
+-- import Numeric               (readInt)
 --import System.IO.Unsafe      (unsafePerformIO)
 
-import CLaSH.Promoted.Nat    (SNat,snat,snatToInteger)
+import CLaSH.Promoted.Nat    (SNat,snatToInteger)
 import CLaSH.Sized.BitVector (BitVector)
 import CLaSH.Signal          (Signal)
 import CLaSH.Signal.Explicit (Signal', SClock, register', systemClock)
 import CLaSH.Signal.Bundle   (bundle')
-import CLaSH.Sized.Unsigned  (Unsigned)
+-- import CLaSH.Sized.Unsigned  (Unsigned)
 
 import CLaSH.Prelude.BlockRam.File
 
@@ -98,8 +98,8 @@ dpRamFile# clk sz file wreA addrA dinA wreB addrB dinB = register' clk undefined
 
   ramT :: STArray s Int e -> (Bool, Int, e, Bool, Int, e) -> ST s (e, e)
   ramT ram (eA, aA, dA, eB, aB, dB) = do
-    dA' <- if (not eA) then readArray ram aA else return dA
-    dB' <- if (not eB) then readArray ram aB else return dB
+    dA' <- if not eA then readArray ram aA else return dA
+    dB' <- if not eB then readArray ram aB else return dB
     when eA (writeArray ram aA dA)
     when eB (writeArray ram aB dB)
     return (dA', dB')

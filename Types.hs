@@ -2,15 +2,15 @@
 {-# LANGUAGE DataKinds #-}
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
-{-# LANGUAGE TemplateHaskell #-}
-{-# LANGUAGE RecordWildCards #-}
-{-# LANGUAGE KindSignatures #-}
+-- {-# LANGUAGE TemplateHaskell #-}
+-- {-# LANGUAGE RecordWildCards #-}
+-- {-# LANGUAGE KindSignatures #-}
 
 module Types where
 
 
 import CLaSH.Prelude
-import CLaSH.Sized.BitVector
+-- import CLaSH.Sized.BitVector
 
 
 type WordSize = BitVector 32

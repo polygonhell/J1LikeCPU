@@ -36,9 +36,9 @@ $(decLiteralD 65536)
     , t_extraIn = [ ("SYS_CLK", 1)
                   ]
     , t_extraOut = []
-    , t_clocks   = [ (clockWizard "clkwiz50"
+    , t_clocks   = [ clockWizard "clkwiz50"
                              "SYS_CLK(0)"
-                             "'0'") 
+                             "'0'" 
                    ]
 }) #-}  
 
@@ -68,13 +68,19 @@ ram addrA addrB weB dataB = dpRamFile d16384 "rob.bin" (signal False) addrA (sig
 
 system :: Signal CpuOut
 system = out where
-  out = evalM $ (CpuIn <$> iin <*> din)
-  addr = iOutAddr <$> out :: Signal AddrSize
-  (din, _) = unbundle $ ram addr (dOutAddr <$> out) ((==) 1 <$> (dOutWE <$> out)) (dOut <$> out)
-  iin = resize <$> din :: Signal InstructionWidth  -- TODO this is incorrect
+  out = evalM (CpuIn <$> iin <*> din)
+
+  addr = iOutAddr <$> out :: Signal AddrSize  
+  lowBit = lsb <$> addr :: Signal (BitVector 1)
+
+  (iWord, din) = unbundle $ ram ((\x -> x `shiftR` 1) <$> addr) (dOutAddr <$> out) ((==) 1 <$> (dOutWE <$> out)) (dOut <$> out) :: (Signal WordSize, Signal WordSize)
+  iin = fn <$> iWord <*> lowBit :: Signal InstructionWidth  -- TODO this is incorrect
+  fn dd lb = inst where
+    shift = if lb == 0 then 16 else 0
+    inst = resize $ dd `shiftR` shift :: InstructionWidth
 
 
-runSystem x = putStr $ unlines $ L.map (show) $L.drop 1 (sampleN x system)
+runSystem x = putStr $ unlines $ L.map show $ L.drop 1 (sampleN x system)
 
 main = runSystem 10
 
@@ -94,38 +100,48 @@ data CpuOut = CpuOut
     dOutWE :: Bit,
 
     -- Instruction Fetch Address
-    iOutAddr :: AddrSize
+    iOutAddr :: AddrSize,
+
+    -- Debugging state 
+    dbgReboot :: Bool,
+    dbgInstruction :: InstructionWidth,
+    dbgData :: WordSize
   } deriving Show
 
 data CpuState = CpuState
-  { pc :: AddrSize,
+  { reboot :: Bool,
+    pc :: AddrSize,
     dstT :: WordSize,
     stDepth :: BitVector 5,
     -- Data and return Stacks
     dst :: Stack 32 32,
     rst :: Stack 32 15
-  }
+  } deriving Show
 
-initialState = CpuState 0 0 0 (Stack 0 (replicate d32 (0 :: WordSize))) (Stack 0 (replicate d32 (0 :: AddrSize)))
+initialState = CpuState True 0 0 0 (Stack 0 (replicate d32 (0 :: WordSize))) (Stack 0 (replicate d32 (0 :: AddrSize)))
 evalM = eval `mealy` initialState
 
 eval :: CpuState -> CpuIn -> (CpuState, CpuOut) 
-eval CpuState{..} CpuIn{..} = (st', out) where
-  st' = CpuState pc' dstT' stDepth' dst' rst'
-  out = CpuOut dOut (resize dstT) dstWe pc' 
+eval state_in@CpuState{..} CpuIn{..} = (st', out) where
 
-  pc' = pc + 1 -- TODO needs to accomodate jumps etc
+  st' = CpuState reboot' pc' dstT' stDepth' dst' rst'
+  out = CpuOut dOut (resize dstT) 0 pc' reboot instruction dataIn
+  reboot' = False
 
-  (dst', dstN) = stack dst (dstWe, dstDelta, dstT)
+  pcPlusOne = pc+1
+  pc' = if reboot then 0 else pcPlusOne -- TODO needs to accomodate jumps etc
+
+  (dst', dstN) = if reboot then (dst, 0) else stack dst (dstWe, dstDelta, dstT)
   (rst', rstR) = stack rst (0, 0, 0)
 
   dOut = dstN
-  dstWe = if isALU && write then 1 else 0 :: Bit
+  dstWe = if not reboot && isALU && write then 1 else 0 :: Bit
   dstDelta = 0
   stDepth' = 0
 
   instMode = slice d15 d13 instruction
-  dstT' = case instMode of
+  dstT' = if reboot then 0 else
+    case instMode of
      0b000 -> dstT                                  -- Jump
      0b001 -> dstN                                  -- Conditional Jump
      0b010 -> dstT                                  -- Call
