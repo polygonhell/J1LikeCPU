@@ -82,7 +82,12 @@ system = out where
 
 runSystem x = putStr $ unlines $ L.map show $ L.drop 1 (sampleN x system)
 
-main = runSystem 10
+stackTest = stOut where
+  st = (Stack 0 (replicate d32 (0 :: WordSize)))
+  (st', _) =  stack st (1, 1, 1234)
+  (stOut, _) =  stack st' (1, 1, 12345)
+
+main = runSystem 4
 
 
 
@@ -105,7 +110,11 @@ data CpuOut = CpuOut
     -- Debugging state 
     dbgReboot :: Bool,
     dbgInstruction :: InstructionWidth,
-    dbgData :: WordSize
+    dbgData :: WordSize,
+    dbgTopStack :: WordSize,
+    dbgDSWe :: Bit,
+    dbgDSDelta :: BitVector 2,
+    dbgDataStck :: Stack 32 32
   } deriving Show
 
 data CpuState = CpuState
@@ -125,7 +134,7 @@ eval :: CpuState -> CpuIn -> (CpuState, CpuOut)
 eval state_in@CpuState{..} CpuIn{..} = (st', out) where
 
   st' = CpuState reboot' pc' dstT' stDepth' dst' rst'
-  out = CpuOut dOut (resize dstT) 0 pc' reboot instruction dataIn
+  out = CpuOut dOut (resize dstT) 0 pc' reboot instruction dataIn dstT' dstWe dstDelta dst'
   reboot' = False
 
   pcPlusOne = pc+1
@@ -135,8 +144,6 @@ eval state_in@CpuState{..} CpuIn{..} = (st', out) where
   (rst', rstR) = stack rst (0, 0, 0)
 
   dOut = dstN
-  dstWe = if not reboot && isALU && write then 1 else 0 :: Bit
-  dstDelta = 0
   stDepth' = 0
 
   instMode = slice d15 d13 instruction
@@ -147,6 +154,9 @@ eval state_in@CpuState{..} CpuIn{..} = (st', out) where
      0b010 -> dstT                                  -- Call
      0b011 -> aluRes                                -- AluOp needs to be decoded
      _ -> resize $ slice d14 d0 instruction         -- Immediate Load
+
+
+
 
   aluSelect = slice d12 d8 instruction
   shiftAmt = fromIntegral (dstT .&. 0x1f) :: Int
@@ -180,6 +190,12 @@ eval state_in@CpuState{..} CpuIn{..} = (st', out) where
   isALU = instMode == 0b011
 
 
+  (dstWe, dstDelta) = case instMode of
+      0b000 -> (1, 0)
+      0b001 -> (1, 0b11)
+      0b010 -> (1, 0)
+      0b011 -> (if t_N then 1 else 0, slice d1 d0 instruction)
+      _ -> (1, 0b01)
 
 
 
