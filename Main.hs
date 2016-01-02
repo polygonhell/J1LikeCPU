@@ -87,7 +87,7 @@ stackTest = stOut where
   (st', _) =  stack st (1, 1, 1234)
   (stOut, _) =  stack st' (1, 1, 12345)
 
-main = runSystem 4
+main = runSystem 5
 
 
 
@@ -156,9 +156,9 @@ eval state_in@CpuState{..} CpuIn{..} = (st', out) where
      _ -> resize $ slice d14 d0 instruction         -- Immediate Load
 
 
+  -- TODO Bit 12
 
-
-  aluSelect = slice d12 d8 instruction
+  aluSelect = slice d11 d8 instruction :: BitVector 4
   shiftAmt = fromIntegral (dstT .&. 0x1f) :: Int
   aluRes = case aluSelect of
     0b0000 -> dstT   -- T
