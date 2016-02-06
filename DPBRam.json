@@ -53,9 +53,8 @@ begin
     if (rising_edge(~CLK[1])) then
       if ~ARG[4] then
         RAM(to_integer(addrA)) := to_bitvector(~ARG[6]);
-      else 
-        doutA <= to_stdlogicvector(RAM(addrA));
-      end if;
+      end if; 
+      doutA <= to_stdlogicvector(RAM(addrA));
     end if;
   end process;
 
@@ -64,9 +63,8 @@ begin
     if (rising_edge(~CLK[1])) then
       if ~ARG[7] then
         RAM(to_integer(addrB)) := to_bitvector(~ARG[9]);
-      else 
-        doutB <= to_stdlogicvector(RAM(addrB));
-      end if;
+      end if; 
+      doutB <= to_stdlogicvector(RAM(addrB));
     end if;
   end process;
 
