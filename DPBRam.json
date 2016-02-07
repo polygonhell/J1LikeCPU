@@ -36,13 +36,13 @@ dpRamFile~COMPNAME_~SYM[0] : block
   signal addrA   : integer range 0 to ~LIT[2]-1;
   signal addrB   : integer range 0 to ~LIT[2]-1;
 begin
-  addrA <= ~ARG[5]
+  addrA <= to_integer(~ARG[5])
   -- pragma translate_off
         mod ~LIT[2]
   -- pragma translate_on
         ;
 
-  addrB <= ~ARG[8]
+  addrB <= to_integer(~ARG[8])
   -- pragma translate_off
         mod ~LIT[2]
   -- pragma translate_on
@@ -52,7 +52,7 @@ begin
   begin
     if (rising_edge(~CLK[1])) then
       if ~ARG[4] then
-        RAM(to_integer(addrA)) := to_bitvector(~ARG[6]);
+        RAM(addrA) := to_bitvector(~ARG[6]);
       end if; 
       doutA <= to_stdlogicvector(RAM(addrA));
     end if;
@@ -62,7 +62,7 @@ begin
   begin
     if (rising_edge(~CLK[1])) then
       if ~ARG[7] then
-        RAM(to_integer(addrB)) := to_bitvector(~ARG[9]);
+        RAM(addrB) := to_bitvector(~ARG[9]);
       end if; 
       doutB <= to_stdlogicvector(RAM(addrB));
     end if;
