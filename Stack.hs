@@ -3,32 +3,23 @@
 {-# LANGUAGE TypeOperators #-}
 {-# LANGUAGE FlexibleContexts #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE FlexibleInstances #-}
+{-# LANGUAGE UndecidableInstances #-}
 
 module Stack where
 
 
 import CLaSH.Prelude
+import qualified GHC.Base as B
 import Prelude hiding ((!!), head)
+import Text.Printf
 -- import Debug.Trace
 
 
--- Head Tail Ptr
-data Stack (n :: Nat) (m :: Nat) = Stack (BitVector m) (Vec n (BitVector m)) deriving (Show)
-
--- Note delta is really sign + magnitude
-stack :: forall n m . (KnownNat n, KnownNat m)  => Stack n m -> (Bit, BitVector 2, BitVector m) -> (Stack n m, BitVector m)
-stack (Stack hd tl) (we, delta, wd) = (Stack hd' tl', hd) where  
-  hd' = if (we .|. move) == 1 then hd'' else hd
-  tl' = if move == 1 then tl'' else tl
-  move = delta ! (0 :: Int)
-  hd'' = if we == 1 then wd else  tl !! (0 :: Int)
-  tl'' = if (delta ! (1::Int)) == 1 then tl <<+ -1 else hd +>> tl
-
-
 -- N X ...
-data Stack2 (n :: Nat) (m :: Nat) = Stack2 (BitVector m) (BitVector m) (Vec n (BitVector m)) deriving (Show)
-stack2 :: forall n m . (KnownNat n, KnownNat m)  => Stack2 n m -> (BitVector m, BitVector m, Bit, BitVector 2) -> Stack2 n m
-stack2 (Stack2 n x tl) (h, h2, we, delta) = Stack2 n' x' tl' where
+data Stack (n :: Nat) (m :: Nat) = Stack (BitVector m) (BitVector m) (Vec n (BitVector m)) 
+stack :: forall n m . (KnownNat n, KnownNat m)  => Stack n m -> (BitVector m, BitVector m, Bit, BitVector 2) -> Stack n m
+stack (Stack n x tl) (h, h2, we, delta) = Stack n' x' tl' where
     (n', x') = if we == 1 then (h, h2) else nx'' -- Have to overwrite both leading values
     (nx'', tl') = case delta of
         -1 -> ((x, tl !! (0::Int)), tl <<+ 0)
@@ -37,5 +28,25 @@ stack2 (Stack2 n x tl) (h, h2, we, delta) = Stack2 n' x' tl' where
         _ -> ((n, x), tl)
 
 
+instance forall n m . (KnownNat n, KnownNat m)  => Show (Stack n m) where
+  -- show :: forall n m . (KnownNat n, KnownNat m) => Stack n m -> String
+  show a = str where 
+    Stack b x tl = a
+    str = printf "%08x:%08x:%08x:%08x..." (toInteger b) (toInteger x) (toInteger (tl !! (0::Int)))  (toInteger (tl !! (1::Int)))
 
+
+stackTests :: IO ()
+stackTests = success where
+  st1@(Stack h h' _) = Stack 1 2 (3 :> 4 :> 5:> Nil) :: Stack 3 8
+  st2 = stack st1 (0, h, 1, 1) 
+  st3 = stack st1 (0, 0, 0, -1) 
+  st4 = stack st1 (0, 0, 0, -2) 
+  st5 = stack st1 (h', h, 1, 0) 
+  success = do 
+    print "Hello"
+    print $ "init     " B.++ show st1
+    print $ "push 0 : " B.++ show st2
+    print $ "drop :   " B.++ show st3
+    print $ "2drop :  " B.++ show st4
+    print $ "swap :   " B.++ show st5 
 

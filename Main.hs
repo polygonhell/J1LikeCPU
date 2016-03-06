@@ -5,18 +5,16 @@
 {-# LANGUAGE TemplateHaskell #-}
 {-# LANGUAGE RecordWildCards #-}
 {-# LANGUAGE KindSignatures #-}
+{-# LANGUAGE TypeFamilies #-}
 
 
 module Main where
 
 import CLaSH.Prelude
-import CLaSH.Sized.Signed
-
-import Language.Haskell.TH
-import CLaSH.Promoted.Nat
-import Debug.Trace
 import Text.Printf
 import qualified Data.List as L
+import Prelude hiding (replicate)
+-- import Debug.Trace
 
 import Types
 import Stack
@@ -58,8 +56,20 @@ combineBits a = b1 `xor` b2 where
   b1 = b1a `xor` b1b
   b2 = b2a `xor` b2b
 
+-- ram :: forall addr (m :: Nat).
+--        (Enum addr, KnownNat m) =>
+--        Signal addr
+--        -> Signal addr
+--        -> Signal Bool
+--        -> Signal (BitVector m)
+--        -> Signal (BitVector m, BitVector m)
+-- -- ram addrA addrB weB dataB = dpRamFile d128 "rob.bin" (signal False) addrA (signal 0) weB addrB dataB
+-- ram addrA addrB weB = dpRamFile d128 "rob.bin" (signal False) addrA (signal 0) weB addrB
 
-ram addrA addrB weB dataB = dpRamFile d16384 "rob.bin" (signal False) addrA (signal 0) weB addrB dataB
+
+bram addrA _ _ _= bundle (iOut, dOut) :: Signal (WordSize, WordSize) where
+  iOut = blockRamFile d128 "rob.bin" (signal (0::AddrSize)) addrA (signal False) (signal (0::WordSize)) :: Signal WordSize
+  dOut = signal (0::WordSize)
 
 -- ram32K :: Signal Addr -> Signal Bit -> Signal Byte -> Signal Byte
 -- -- ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
@@ -73,22 +83,38 @@ system = out where
   addr = iOutAddr <$> out :: Signal AddrSize  
   lowBit = lsb <$> addr :: Signal (BitVector 1)
 
-  (iWord, din) = unbundle $ ram ((\x -> x `shiftR` 1) <$> addr) (dOutAddr <$> out) ((==) 1 <$> (dOutWE <$> out)) (dOut <$> out) :: (Signal WordSize, Signal WordSize)
-  iin = fn <$> iWord <*> lowBit :: Signal InstructionWidth  -- TODO this is incorrect
-  fn dd lb = inst where
-    shift = if lb == 0 then 16 else 0
-    inst = resize $ dd `shiftR` shift :: InstructionWidth
+  (iWord, din) = unbundle $ bram (wordAddr <$> addr) (dOutAddr <$> out) ((==) 1 <$> (dOutWE <$> out)) (dOut <$> out) :: (Signal WordSize, Signal WordSize)
+  wordAddr x = x `shiftR` 1
+  iin = fn <$> iWord <*> lowBit
+  fn dd lb = instr where
+    bshift = if lb == 1 then 16 else 0
+    instr = resize $ dd `shiftR` bshift 
 
+runSystem :: Int -> IO ()
+runSystem x = putStr $ unlines $ L.map show $ sampleN x system
 
-runSystem x = putStr $ unlines $ L.map show $ L.drop 1 (sampleN x system)
-
-stackTest = stOut where
-  st = (Stack 0 (replicate d32 (0 :: WordSize)))
-  (st', _) =  stack st (1, 1, 1234)
-  (stOut, _) =  stack st' (1, 1, 12345)
-
+main :: IO()
 main = runSystem 5
 
+inst :: [BitVector 16]
+inst = [0x8123, 0x8234, 0x6303, 0x8123, 0x8234, 0x6303]
+
+testSys:: CpuState -> CpuIn -> [CpuOut] 
+testSys inSt ii = outOut : outStN where
+  (outSt, outOut) = eval inSt ii
+  instruct = inst L.!! (fromIntegral (iOutAddr outOut) :: Int)
+  outStN = testSys outSt $ CpuIn instruct 1234
+
+test = putStr $ unlines $ L.map show $ L.take 5 $ testSys initialState $ CpuIn undefined undefined
+
+
+
+
+data InstructionMode = ImALU | ImJmp | ImJmp0 | ImCall deriving (Show)
+data AluOp = AluT | AluN | AluX | AluNotT | AluMinusT | AluTMinus1
+           | AluAdd deriving (Show)
+data NSelect = NsN | NsT | NsX | NsTtoR deriving (Show)
+data XSelect = XsX | XsT | XsN | XsWriteT deriving (Show)
 
 
 -- DataIn 
@@ -114,92 +140,145 @@ data CpuOut = CpuOut
     dbgTopStack :: WordSize,
     dbgDSWe :: Bit,
     dbgDSDelta :: BitVector 2,
-    dbgDataStck :: Stack 32 32
-  } deriving Show
+    dbgDataStck :: Stack 31 32
+  }
+
+instance Show CpuOut where
+  show a = str where 
+    CpuOut{..} = a
+    str = printf "%08x " (toInteger dOut) L.++ 
+          printf "%04x " (toInteger dOutAddr) L.++ 
+          printf "%01x " (toInteger dOutWE) L.++ 
+          printf "%04x " (toInteger iOutAddr) L.++ 
+
+          printf "%01x " (if dbgReboot then 1 else 0 :: Integer) L.++ 
+          printf "%04x " (toInteger dbgInstruction) L.++ 
+          printf "%08x " (toInteger dbgData) L.++ 
+          printf "%01x " (toInteger dbgDSWe) L.++ 
+          printf "%01x " (toInteger dbgDSDelta) L.++ 
+          printf "%08x " (toInteger dbgTopStack) L.++ 
+          show dbgDataStck
 
 data CpuState = CpuState
   { reboot :: Bool,
     pc :: AddrSize,
-    dstT :: WordSize,
-    stDepth :: BitVector 5,
+    t :: WordSize,
+    r :: WordSize,
+    depth :: BitVector 5,
     -- Data and return Stacks
-    dst :: Stack 32 32,
-    rst :: Stack 32 15
+    dst :: Stack 31 32,
+    rst :: Stack 31 15
   } deriving Show
 
-initialState = CpuState True 0 0 0 (Stack 0 (replicate d32 (0 :: WordSize))) (Stack 0 (replicate d32 (0 :: AddrSize)))
+initialState :: CpuState
+initialState = CpuState True 0 0 0 0 (Stack 0 0 (replicate d31 (0 :: WordSize))) (Stack 0 0 (replicate d31 (0 :: AddrSize)))
+
+evalM :: Signal CpuIn -> Signal CpuOut
 evalM = eval `mealy` initialState
 
+
 eval :: CpuState -> CpuIn -> (CpuState, CpuOut) 
-eval state_in@CpuState{..} CpuIn{..} = (st', out) where
-
-  st' = CpuState reboot' pc' dstT' stDepth' dst' rst'
-  out = CpuOut dOut (resize dstT) 0 pc' reboot instruction dataIn dstT' dstWe dstDelta dst'
-  reboot' = False
-
-  pcPlusOne = pc+1
-  pc' = if reboot then 0 else pcPlusOne -- TODO needs to accomodate jumps etc
-
-  (dst', dstN) = if reboot then (dst, 0) else stack dst (dstWe, dstDelta, dstT)
-  (rst', rstR) = stack rst (0, 0, 0)
-
-  dOut = dstN
-  stDepth' = 0
-
-  instMode = slice d15 d13 instruction
-  dstT' = if reboot then 0 else
-    case instMode of
-     0b000 -> dstT                                  -- Jump
-     0b001 -> dstN                                  -- Conditional Jump
-     0b010 -> dstT                                  -- Call
-     0b011 -> aluRes                                -- AluOp needs to be decoded
-     _ -> resize $ slice d14 d0 instruction         -- Immediate Load
+eval CpuState{..} CpuIn{..} = (st', out) where
 
 
-  -- TODO Bit 12
-
-  aluSelect = slice d11 d8 instruction :: BitVector 4
-  shiftAmt = fromIntegral (dstT .&. 0x1f) :: Int
-  aluRes = case aluSelect of
-    0b0000 -> dstT   -- T
-    0b0001 -> dstN   -- N
-    0b0010 -> dstT + dstN
-    0b0011 -> dstT .&. dstN
-    0b0100 -> dstT .|. dstN
-    0b0101 -> dstT `xor` dstN
-    0b0110 -> complement dstT
-    0b0111 -> if dstN == dstT then -1 else 0
-    0b1000 -> if sDstN < sDstT then -1 else 0 where -- Signed comparison
-      sDstN = unpack dstN :: Signed 32
-      sDstT = unpack dstT :: Signed 32
-    0b1001 -> dstN `shiftR` shiftAmt
-    0b1010 -> dstN `shiftL` shiftAmt
-    0b1011 -> resize rstR    -- R
-    0b1100 -> dataIn  -- Read from memory
-    0b1101 -> 0       -- io_din??
-    0b1110 -> 0       -- depth
-    0b1111 -> if dstN < dstT then -1 else 0         -- Unsigned comparison
+  (st', out) = 
+    if reboot then 
+      (CpuState False pc t r depth dst rst, CpuOut t 0 0 pc reboot 0 0 t 0 0 dst) 
+    else
+      (CpuState False pc' t' r' depth' dst' rst', CpuOut t' 0 0 pc' reboot instruction dataIn t' dstWe dstDelta dst')
 
 
-  functionBits = slice d6 d4 instruction
-  t_N = functionBits == 1
-  t_R = functionBits == 2
-  write = functionBits == 3
-  iow = functionBits == 4
-  ior = functionBits == 5
-  isALU = instMode == 0b011
+  pc1 = pc + 1
+  -- pc' = pc1
+  pc' = if isImm then
+          pc1
+        else
+          case iMode of 
+            iAlu -> pc1
+            _ -> pc1
+
+  r' = r
+
+  dst' = stack dst (n', x', dstWe, dstDelta) 
+  depth' = 0
+  rst' = rst
+
+  Stack n x _ = dst
+
+  isImm = instruction ! (15 :: Integer) == 1
+  iMode = case slice d14 d13 instruction :: BitVector 2 of
+    0x00 -> ImCall
+    0x01 -> ImJmp
+    0x02 -> ImJmp0
+    _ -> ImALU
+
+  branchTarget = resize $ slice d12 d0 instruction :: AddrSize
+
+  aluOp = case slice d11 d7 instruction of
+    0x00 -> AluT
+    0x01 -> AluN
+    0x02 -> AluX
+    0x03 -> AluNotT
+    0x04 -> AluMinusT
+    0x05 -> AluTMinus1
+    0x06 -> AluAdd
+    _ -> AluT
+
+  nSelect = case slice d6 d5 instruction of
+    0x01 -> NsT
+    0x02 -> NsX
+    0x03 -> NsTtoR
+    _ -> NsN
+
+  xSelect = case slice d4 d3 instruction of
+    0x01 -> XsT
+    0x02 -> XsN
+    0x03 -> XsWriteT
+    _ -> XsX
+
+  dstackWrite = instruction ! (2 :: Integer)
+  dstackOffset = slice d1 d0 instruction
+
+  complementT = complement t
+  -- Share the adder for these
+  adderOut = a + b where
+    (a,b) = case aluOp of
+      AluTMinus1 -> (t, -1)
+      AluMinusT -> (complementT, 1)
+      _ -> (t, n) 
+
+  immValue = resize $ instruction .&. 0x7fff :: WordSize
+
+  (t', n', x', dstWe, dstDelta) = 
+    if isImm then (immValue, t, n, 1, 1)  else aluVal
+
+  -- aluVal :: (WordSize, WordSize, WordSize, Bit, BitVector 2)
+  aluVal = case iMode of
+    ImALU -> (res, nOut, xOut, dstackWrite, dstackOffset) where
+      res = case aluOp of
+        AluT -> t
+        AluN -> n
+        AluX -> x
+        AluNotT -> complement t
+        AluMinusT -> adderOut
+        AluTMinus1 -> adderOut
+        AluAdd -> adderOut
+      nOut = case nSelect of
+        NsT -> t
+        NsX -> x
+        _ -> n
+      xOut = case xSelect of
+        XsT -> t
+        XsN -> n
+        _ -> x
+    _ -> (t, 0, 0, 0, 0)
 
 
-  (dstWe, dstDelta) = case instMode of
-      0b000 -> (1, 0)
-      0b001 -> (1, 0b11)
-      0b010 -> (1, 0)
-      0b011 -> (if t_N then 1 else 0, slice d1 d0 instruction)
-      _ -> (1, 0b01)
 
 
 
-  
+
+
 
 
 
