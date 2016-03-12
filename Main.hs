@@ -97,7 +97,7 @@ runSystem x = putStr $ unlines $ L.map show $ sampleN x system
 main :: IO()
 main = runSystem 20
 
-data InstructionMode = ImALU | ImJmp | ImJmp0 | ImCall deriving (Show)
+data InstructionMode = ImALU | ImJmp | ImJmpNE | ImCall deriving (Show)
 data AluOp = AluT | AluN | AluX | AluNotT | AluMinusT | AluTMinus1
            | AluAdd deriving (Show)
 data NSelect = NsN | NsT | NsX | NsTtoR deriving (Show)
@@ -184,6 +184,7 @@ eval CpuState{..} CpuIn{..} = (st', out) where
         else
           case iMode of
             ImJmp -> (branchTarget, rst)
+            ImJmpNE | t /= 0 -> (branchTarget, rst)  
             ImCall -> (branchTarget, rst'') where
               rst'' = stack rst (resize pc1, rh, 1, 1)
             ImALU | isRet -> (resize rh, rst'') where
@@ -198,7 +199,7 @@ eval CpuState{..} CpuIn{..} = (st', out) where
   iMode = case slice d14 d13 instruction :: BitVector 2 of
     0x00 -> ImCall
     0x01 -> ImJmp
-    0x02 -> ImJmp0
+    0x02 -> ImJmpNE
     _ -> ImALU
 
   branchTarget = resize $ slice d12 d0 instruction :: AddrSize
@@ -225,7 +226,7 @@ eval CpuState{..} CpuIn{..} = (st', out) where
     0x03 -> XsWriteT
     _ -> XsX
 
-  dstackWrite = complement $ dstackOffset ! (1 :: Integer)
+  dstackWrite = complement $ dstackOffset ! (1 :: Integer) -- 0 or positive offset causes write
   dstackOffset = slice d1 d0 instruction
 
   complementT = complement t
@@ -260,6 +261,7 @@ eval CpuState{..} CpuIn{..} = (st', out) where
         XsT -> t
         XsN -> n
         _ -> x
+    ImJmpNE -> (n, 0, 0, 0, -1)
     _ -> (t, 0, 0, 0, 0)
 
 
