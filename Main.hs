@@ -56,20 +56,20 @@ combineBits a = b1 `xor` b2 where
   b1 = b1a `xor` b1b
   b2 = b2a `xor` b2b
 
--- ram :: forall addr (m :: Nat).
---        (Enum addr, KnownNat m) =>
---        Signal addr
---        -> Signal addr
---        -> Signal Bool
---        -> Signal (BitVector m)
---        -> Signal (BitVector m, BitVector m)
+ram :: forall addr (m :: Nat).
+       (Enum addr, KnownNat m) =>
+       Signal addr
+       -> Signal addr
+       -> Signal Bool
+       -> Signal (BitVector m)
+       -> Signal (BitVector m, BitVector m)
 -- -- ram addrA addrB weB dataB = dpRamFile d128 "rob.bin" (signal False) addrA (signal 0) weB addrB dataB
--- ram addrA addrB weB = dpRamFile d128 "rob.bin" (signal False) addrA (signal 0) weB addrB
+ram addrA addrB weB = dpRamFile d128 "rob.bin" (signal False) addrA (signal 0) weB addrB
 
 
-bram addrA _ _ _= bundle (iOut, dOut) :: Signal (WordSize, WordSize) where
-  iOut = blockRamFile d128 "rob.bin" (signal (0::AddrSize)) addrA (signal False) (signal (0::WordSize)) :: Signal WordSize
-  dOut = signal (0::WordSize)
+  -- bram addrA _ _ _= bundle (iOut, dOut) :: Signal (WordSize, WordSize) where
+  -- iOut = blockRamFile d128 "rob.bin" (signal (0::AddrSize)) addrA (signal False) (signal (0::WordSize)) :: Signal WordSize
+  -- dOut = signal (0::WordSize)
 
 -- ram32K :: Signal Addr -> Signal Bit -> Signal Byte -> Signal Byte
 -- -- ram64K addr wrEn dataIn = blockRamPow2 testRAMContents addr addr wrEn dataIn
@@ -81,34 +81,21 @@ system = out where
   out = evalM (CpuIn <$> iin <*> din)
 
   addr = iOutAddr <$> out :: Signal AddrSize  
-  lowBit = lsb <$> addr :: Signal (BitVector 1)
+  -- Need a FlipFlop to delay the lowBit so it's correctly applied to the Instruction after the RAM fetch
+  lowBit = register 0 $ lsb <$> addr :: Signal (BitVector 1)
 
-  (iWord, din) = unbundle $ bram (wordAddr <$> addr) (dOutAddr <$> out) ((==) 1 <$> (dOutWE <$> out)) (dOut <$> out) :: (Signal WordSize, Signal WordSize)
+  (iWord, din) = unbundle $ ram (wordAddr <$> addr) (dOutAddr <$> out) ((==) 1 <$> (dOutWE <$> out)) (dOut <$> out) :: (Signal WordSize, Signal WordSize)
   wordAddr x = x `shiftR` 1
   iin = fn <$> iWord <*> lowBit
   fn dd lb = instr where
-    bshift = if lb == 1 then 16 else 0
+    bshift = if lb == 0 then 16 else 0
     instr = resize $ dd `shiftR` bshift 
 
 runSystem :: Int -> IO ()
 runSystem x = putStr $ unlines $ L.map show $ sampleN x system
 
 main :: IO()
-main = runSystem 5
-
-inst :: [BitVector 16]
-inst = [0x8123, 0x8234, 0x6303, 0x8123, 0x8234, 0x6303]
-
-testSys:: CpuState -> CpuIn -> [CpuOut] 
-testSys inSt ii = outOut : outStN where
-  (outSt, outOut) = eval inSt ii
-  instruct = inst L.!! (fromIntegral (iOutAddr outOut) :: Int)
-  outStN = testSys outSt $ CpuIn instruct 1234
-
-test = putStr $ unlines $ L.map show $ L.take 5 $ testSys initialState $ CpuIn undefined undefined
-
-
-
+main = runSystem 15
 
 data InstructionMode = ImALU | ImJmp | ImJmp0 | ImCall deriving (Show)
 data AluOp = AluT | AluN | AluX | AluNotT | AluMinusT | AluTMinus1
@@ -189,12 +176,13 @@ eval CpuState{..} CpuIn{..} = (st', out) where
 
 
   pc1 = pc + 1
-  -- pc' = pc1
   pc' = if isImm then
           pc1
         else
-          case iMode of 
-            iAlu -> pc1
+          case iMode of
+            ImJmp -> branchTarget
+
+            ImALU -> pc1          
             _ -> pc1
 
   r' = r
