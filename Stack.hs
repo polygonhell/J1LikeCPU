@@ -17,6 +17,7 @@ import Text.Printf
 
 
 -- N X ...
+-- TODO this could just be a Vector with pattern matching
 data Stack (n :: Nat) (m :: Nat) = Stack (BitVector m) (BitVector m) (Vec n (BitVector m)) 
 stack :: forall n m . (KnownNat n, KnownNat m)  => Stack n m -> (BitVector m, BitVector m, Bit, BitVector 2) -> Stack n m
 stack (Stack n x tl) (h, h2, we, delta) = Stack n' x' tl' where

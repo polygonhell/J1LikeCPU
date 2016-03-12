@@ -95,7 +95,7 @@ runSystem :: Int -> IO ()
 runSystem x = putStr $ unlines $ L.map show $ sampleN x system
 
 main :: IO()
-main = runSystem 15
+main = runSystem 20
 
 data InstructionMode = ImALU | ImJmp | ImJmp0 | ImCall deriving (Show)
 data AluOp = AluT | AluN | AluX | AluNotT | AluMinusT | AluTMinus1
@@ -127,7 +127,8 @@ data CpuOut = CpuOut
     dbgTopStack :: WordSize,
     dbgDSWe :: Bit,
     dbgDSDelta :: BitVector 2,
-    dbgDataStck :: Stack 31 32
+    dbgDataStck :: Stack 31 32,
+    dbgRetStack :: Stack 31 32
   }
 
 instance Show CpuOut where
@@ -144,21 +145,21 @@ instance Show CpuOut where
           printf "%01x " (toInteger dbgDSWe) L.++ 
           printf "%01x " (toInteger dbgDSDelta) L.++ 
           printf "%08x " (toInteger dbgTopStack) L.++ 
-          show dbgDataStck
+          show dbgDataStck L.++
+          " " L.++ show dbgRetStack
 
 data CpuState = CpuState
   { reboot :: Bool,
     pc :: AddrSize,
     t :: WordSize,
-    r :: WordSize,
     depth :: BitVector 5,
     -- Data and return Stacks
     dst :: Stack 31 32,
-    rst :: Stack 31 15
+    rst :: Stack 31 32
   } deriving Show
 
 initialState :: CpuState
-initialState = CpuState True 0 0 0 0 (Stack 0 0 (replicate d31 (0 :: WordSize))) (Stack 0 0 (replicate d31 (0 :: AddrSize)))
+initialState = CpuState True 0 0 0 (Stack 0 0 (replicate d31 (0 :: WordSize))) (Stack 0 0 (replicate d31 (0 :: WordSize)))
 
 evalM :: Signal CpuIn -> Signal CpuOut
 evalM = eval `mealy` initialState
@@ -170,29 +171,29 @@ eval CpuState{..} CpuIn{..} = (st', out) where
 
   (st', out) = 
     if reboot then 
-      (CpuState False pc t r depth dst rst, CpuOut t 0 0 pc reboot 0 0 t 0 0 dst) 
+      (CpuState False pc t depth dst rst, CpuOut t 0 0 pc reboot 0 0 t 0 0 dst rst) 
     else
-      (CpuState False pc' t' r' depth' dst' rst', CpuOut t' 0 0 pc' reboot instruction dataIn t' dstWe dstDelta dst')
+      (CpuState False pc' t' depth' dst' rst', CpuOut t' 0 0 pc' reboot instruction dataIn t' dstWe dstDelta dst' rst')
 
+  Stack n x _ = dst
+  Stack rh _ _ = rst
 
   pc1 = pc + 1
-  pc' = if isImm then
-          pc1
+  (pc', rst') = if isImm then
+          (pc1, rst)
         else
           case iMode of
-            ImJmp -> branchTarget
-
-            ImALU -> pc1          
-            _ -> pc1
-
-  r' = r
+            ImJmp -> (branchTarget, rst)
+            ImCall -> (branchTarget, rst'') where
+              rst'' = stack rst (resize pc1, rh, 1, 1)
+            ImALU | isRet -> (resize rh, rst'') where
+              rst'' = stack rst (0, 0, 0, -1)
+            _ -> (pc1, rst)
 
   dst' = stack dst (n', x', dstWe, dstDelta) 
   depth' = 0
-  rst' = rst
 
-  Stack n x _ = dst
-
+  isRet = instruction ! (2 :: Integer) == 1
   isImm = instruction ! (15 :: Integer) == 1
   iMode = case slice d14 d13 instruction :: BitVector 2 of
     0x00 -> ImCall
@@ -224,7 +225,7 @@ eval CpuState{..} CpuIn{..} = (st', out) where
     0x03 -> XsWriteT
     _ -> XsX
 
-  dstackWrite = instruction ! (2 :: Integer)
+  dstackWrite = complement $ dstackOffset ! (1 :: Integer)
   dstackOffset = slice d1 d0 instruction
 
   complementT = complement t
