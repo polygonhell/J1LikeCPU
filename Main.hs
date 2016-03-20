@@ -16,6 +16,8 @@ import qualified Data.List as L
 import Prelude hiding (replicate)
 -- import Debug.Trace
 
+import UART
+
 import Types
 import Stack
 import DPBRam
@@ -30,7 +32,7 @@ $(decLiteralD 65536)
   (TopEntity
     { t_name = "main"
     , t_inputs = []
-    , t_outputs = ["SS_SEGS"]
+    , t_outputs = ["LED", "TX"]
     , t_extraIn = [ ("SYS_CLK", 1)
                   ]
     , t_extraOut = []
@@ -41,10 +43,11 @@ $(decLiteralD 65536)
 }) #-}  
 
 
-topEntity :: Signal (BitVector 4)
-topEntity = o where 
+topEntity :: Signal (BitVector 4, BitVector 1)
+topEntity = bundle (o, tx) where 
   res = system
   o = (resize . dOut) <$> res
+  tx = signal 0
 
 
 
