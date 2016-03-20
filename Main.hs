@@ -45,7 +45,7 @@ $(decLiteralD 65536)
 
 topEntity :: Signal (BitVector 4, BitVector 1)
 topEntity = bundle (res, tx) where 
-  res = signal 10 :: Signal (BitVector 4)
+  res = signal 7 :: Signal (BitVector 4)
   tx = uart
 
 -- topEntity :: Signal (BitVector 4, BitVector 1)
@@ -58,8 +58,8 @@ topEntity = bundle (res, tx) where
 uart :: Signal Bit
 uart = out where 
   (out, rdy) = unbundle $ txUart $ bundle (dataIn, load, signal True :: Signal Bool)
-  dataIn = signal 99 :: Signal (BitVector 8)
-  load = register True nextLoad
+  dataIn = signal 97 :: Signal (BitVector 8)
+  load = register True nextLoad  
   nextLoad = rdy
 
 

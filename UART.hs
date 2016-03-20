@@ -18,7 +18,7 @@ divider :: BitVector 13
 divider = 5207      -- 50E6/9600 -1
 
 uartInitialState :: TXState
-uartInitialState = TXState 0 True 0 0 0
+uartInitialState = TXState 0 True 0 1 0
 
 txUart :: Signal (BitVector 8, Bool, Bool) -> Signal (Bit, Bool)
 txUart =  txRun `mealy` uartInitialState
