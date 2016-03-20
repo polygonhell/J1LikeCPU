@@ -4,7 +4,7 @@
 module UART where
 
 import CLaSH.Prelude
-import qualified Data.List as L
+-- import qualified Data.List as L
 
 data TXState = TXState { txDataReg :: BitVector 8
                        , txEmpty :: Bool
@@ -20,15 +20,12 @@ divider = 5207      -- 50E6/9600 -1
 uartInitialState :: TXState
 uartInitialState = TXState 0 True 0 0 0
 
-txUart :: Signal (BitVector 8, Bool, Bool) -> Signal Bit
+txUart :: Signal (BitVector 8, Bool, Bool) -> Signal (Bit, Bool)
 txUart =  txRun `mealy` uartInitialState
 
-testUART :: IO ()
-testUART = putStr $ "divisor = " L.++ show divider
-
-txRun :: TXState -> (BitVector 8, Bool, Bool) -> (TXState, Bit) 
-txRun st@TXState{..} (txData, txLoadData, txEnable) = (st', out) where
-    (st', out) = case clockDividerCount of
+txRun :: TXState -> (BitVector 8, Bool, Bool) -> (TXState, (Bit, Bool)) 
+txRun st@TXState{..} (txData, txLoadData, txEnable) = (st', (out, txEmpty'')) where
+    (st', out, txEmpty'') = case clockDividerCount of
         _ | clockDividerCount == divider -> st'' where
             txDataReg'  = if txLoadData then txData else txDataReg
             txEmpty' = case txLoadData of 
@@ -43,7 +40,7 @@ txRun st@TXState{..} (txData, txLoadData, txEnable) = (st', out) where
                 9 -> 0
                 _ -> txCount + 1
 
-            st'' = (st{clockDividerCount = 0, txDataReg = txDataReg', txEmpty = txEmpty', txOut = txOut', txCount = txCount'}, txOut')
+            st'' = (st{clockDividerCount = 0, txDataReg = txDataReg', txEmpty = txEmpty', txOut = txOut', txCount = txCount'}, txOut', txEmpty')
         _ -> st'' where
-            st'' = (st{clockDividerCount = clockDividerCount+1}, txOut)
+            st'' = (st{clockDividerCount = clockDividerCount+1}, txOut, txEmpty)
 

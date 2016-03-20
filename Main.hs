@@ -44,11 +44,23 @@ $(decLiteralD 65536)
 
 
 topEntity :: Signal (BitVector 4, BitVector 1)
-topEntity = bundle (o, tx) where 
-  res = system
-  o = (resize . dOut) <$> res
-  tx = signal 0
+topEntity = bundle (res, tx) where 
+  res = signal 10 :: Signal (BitVector 4)
+  tx = uart
 
+-- topEntity :: Signal (BitVector 4, BitVector 1)
+-- topEntity = bundle (o, tx) where 
+--   res = system
+--   o = (resize . dOut) <$> res
+--   tx = uart
+
+
+uart :: Signal Bit
+uart = out where 
+  (out, rdy) = unbundle $ txUart $ bundle (dataIn, load, signal True :: Signal Bool)
+  dataIn = signal 99 :: Signal (BitVector 8)
+  load = register True nextLoad
+  nextLoad = rdy
 
 
 combineBits :: BitVector 32 -> BitVector 8
