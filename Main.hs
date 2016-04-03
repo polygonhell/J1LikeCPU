@@ -110,12 +110,13 @@ runSystem :: Int -> IO ()
 runSystem x = putStr $ unlines $ L.map show $ sampleN x system
 
 main :: IO()
-main = runSystem 20
+main = runSystem 45
 
 data InstructionMode = ImALU | ImJmp | ImJmpNE | ImCall deriving (Show)
-data AluOp = AluT | AluN | AluX | AluNotT | AluMinusT | AluTMinus1
-           | AluAdd deriving (Show)
-data NSelect = NsN | NsT | NsX | NsTtoR deriving (Show)
+data AluOp = AluT | AluN | AluX | AluR | AluNotT | AluMinusT | AluTMinus1 
+           | AluAdd | AluSub
+           | AluEq  deriving (Show, Eq)
+data NSelect = NsN | NsT | NsX | NsTtoR deriving (Show, Eq)
 data XSelect = XsX | XsT | XsN | XsWriteT deriving (Show)
 
 
@@ -202,6 +203,11 @@ eval CpuState{..} CpuIn{..} = (st', out) where
             ImJmpNE | t /= 0 -> (branchTarget, rst)  
             ImCall -> (branchTarget, rst'') where
               rst'' = stack rst (resize pc1, rh, 1, 1)
+            ImALU | isRtoT && isRet-> (pc1, rst'') where
+              rst'' = stack rst (0, 0, 0, -1) 
+            ImALU | isRtoT -> (pc1, rst)
+            ImALU | isTtoR -> (pc1, rst'') where
+              rst'' = stack rst (t, rh, 1, 1) 
             ImALU | isRet -> (resize rh, rst'') where
               rst'' = stack rst (0, 0, 0, -1)
             _ -> (pc1, rst)
@@ -209,6 +215,8 @@ eval CpuState{..} CpuIn{..} = (st', out) where
   dst' = stack dst (n', x', dstWe, dstDelta) 
   depth' = 0
 
+  isTtoR = nSelect == NsTtoR
+  isRtoT = aluOp == AluR
   isRet = instruction ! (2 :: Integer) == 1
   isImm = instruction ! (15 :: Integer) == 1
   iMode = case slice d14 d13 instruction :: BitVector 2 of
@@ -227,6 +235,9 @@ eval CpuState{..} CpuIn{..} = (st', out) where
     0x04 -> AluMinusT
     0x05 -> AluTMinus1
     0x06 -> AluAdd
+    0x07 -> AluSub
+    0x08 -> AluR
+    0x09 -> AluEq
     _ -> AluT
 
   nSelect = case slice d6 d5 instruction of
@@ -250,6 +261,7 @@ eval CpuState{..} CpuIn{..} = (st', out) where
     (a,b) = case aluOp of
       AluTMinus1 -> (t, -1)
       AluMinusT -> (complementT, 1)
+      AluSub -> (t, -n)
       _ -> (t, n) 
 
   immValue = resize $ instruction .&. 0x7fff :: WordSize
@@ -268,6 +280,9 @@ eval CpuState{..} CpuIn{..} = (st', out) where
         AluMinusT -> adderOut
         AluTMinus1 -> adderOut
         AluAdd -> adderOut
+        AluSub -> adderOut
+        AluEq -> if t == n then -1 else 0
+        AluR -> rh
       nOut = case nSelect of
         NsT -> t
         NsX -> x
